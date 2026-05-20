@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Candy Match</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: linear-gradient(135deg, #1a0533 0%, #3d1066 50%, #1a0533 100%);
+    min-height: 100vh;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    font-family: 'Segoe UI', sans-serif;
+    color: white; user-select: none;
+  }
+  h1 {
+    font-size: 2rem; font-weight: 900;
+    text-shadow: 0 0 20px #ff69b4, 0 2px 4px rgba(0,0,0,0.5);
+    margin-bottom: 10px; letter-spacing: 2px;
+  }
+  #hud {
+    display: flex; gap: 30px; margin-bottom: 12px;
+    background: rgba(255,255,255,0.1);
+    padding: 8px 24px; border-radius: 30px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.2);
+  }
+  .hud-item { text-align: center; }
+  .hud-label { font-size: 0.65rem; text-transform: uppercase; opacity: 0.7; letter-spacing: 1px; }
+  .hud-val { font-size: 1.4rem; font-weight: 800; }
+  #score-val { color: #ffd700; }
+  #target-val { color: #00ffcc; }
+  #moves-val { color: #ff6b6b; }
+  #board-wrap {
+    background: rgba(255,255,255,0.08);
+    border-radius: 16px; padding: 10px;
+    border: 2px solid rgba(255,255,255,0.15);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  #board {
+    display: grid;
+    grid-template-columns: repeat(10, 46px);
+    grid-template-rows: repeat(10, 46px);
+    gap: 3px;
+  }
+  .cell {
+    width: 46px; height: 46px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.5rem; cursor: pointer;
+    transition: transform 0.1s, filter 0.1s;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .cell:hover { transform: scale(1.1); filter: brightness(1.2); }
+  .cell.selected {
+    transform: scale(1.15);
+    filter: brightness(1.4) drop-shadow(0 0 8px #fff);
+    background: rgba(255,255,255,0.25);
+    border-color: #fff;
+  }
+  .cell.matched { animation: pop 0.35s ease forwards; }
+  .cell.falling { animation: fall 0.25s ease forwards; }
+  .cell.special {
+    filter: brightness(1.4) drop-shadow(0 0 8px gold);
+    border: 2px solid gold;
+    animation: pulse 1s infinite alternate;
+  }
+  @keyframes pulse {
+    from { filter: brightness(1.3) drop-shadow(0 0 4px gold); }
+    to   { filter: brightness(1.7) drop-shadow(0 0 12px gold); }
+  }
+  @keyframes pop {
+    0%   { transform: scale(1); opacity: 1; }
+    50%  { transform: scale(1.5); opacity: 0.5; }
+    100% { transform: scale(0); opacity: 0; }
+  }
+  @keyframes fall {
+    from { transform: translateY(-50px); opacity: 0; }
+    to   { transform: translateY(0); opacity: 1; }
+  }
+  @keyframes shake {
+    0%,100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+  }
+  .cell.shake { animation: shake 0.3s ease; }
+  #progress-bar-wrap {
+    width: 490px; height: 12px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 10px; margin: 10px 0 6px; overflow: hidden;
+  }
+  #progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #00ffcc, #ffd700);
+    border-radius: 10px; transition: width 0.4s ease; width: 0%;
+  }
+  #msg {
+    min-height: 28px; font-size: 1rem; font-weight: 700;
+    color: #ffd700; text-shadow: 0 0 10px #ffd700;
+    margin-top: 6px; text-align: center;
+  }
+  #hint {
+    font-size: 0.75rem; opacity: 0.6; margin-top: 4px;
+    text-align: center;
+  }
+  #overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.75);
+    align-items: center; justify-content: center;
+    flex-direction: column; gap: 16px; z-index: 100;
+  }
+  #overlay.show { display: flex; }
+  #overlay h2 { font-size: 3rem; font-weight: 900; text-shadow: 0 0 30px currentColor; }
+  #overlay p { font-size: 1.2rem; opacity: 0.8; }
+  #restart-btn {
+    background: linear-gradient(135deg, #ff69b4, #ff1493);
+    border: none; color: white;
+    padding: 14px 36px; border-radius: 30px;
+    font-size: 1.1rem; font-weight: 800; cursor: pointer;
+    box-shadow: 0 4px 20px rgba(255,20,147,0.5);
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  #restart-btn:hover { transform: scale(1.07); box-shadow: 0 6px 28px rgba(255,20,147,0.7); }
+</style>
+</head>
+<body>
+<h1>🍬 Candy Match</h1>
+<div id="hud">
+  <div class="hud-item"><div class="hud-label">Punti</div><div class="hud-val" id="score-val">0</div></div>
+  <div class="hud-item"><div class="hud-label">Obiettivo</div><div class="hud-val" id="target-val">2000</div></div>
+  <div class="hud-item"><div class="hud-label">Mosse</div><div class="hud-val" id="moves-val">30</div></div>
+</div>
+<div id="progress-bar-wrap"><div id="progress-bar"></div></div>
+<div id="board-wrap"><div id="board"></div></div>
+<div id="msg"></div>
+<div id="hint">💣 Seleziona la bomba e scambiala con una caramella vicina per farla esplodere!</div>
+
+<div id="overlay">
+  <h2 id="overlay-title"></h2>
+  <p id="overlay-sub"></p>
+  <button id="restart-btn">🔄 Gioca ancora</button>
+</div>
+
+<script>
+const COLS = 10, ROWS = 10;
+const TARGET = 2000, MAX_MOVES = 30;
+const CANDIES = ['🍬','🍭','🍡','🍫','🧁','🍩'];
+const BOMB = -1;
+
+let board = [], selected = null, score = 0, moves = MAX_MOVES, busy = false;
+
+const boardEl = document.getElementById('board');
+const scoreEl = document.getElementById('score-val');
+const movesEl = document.getElementById('moves-val');
+const progressEl = document.getElementById('progress-bar');
+const msgEl = document.getElementById('msg');
+const overlay = document.getElementById('overlay');
+
+function rnd() { return Math.floor(Math.random() * CANDIES.length); }
+
+function initBoard() {
+  board = [];
+  for (let r = 0; r < ROWS; r++) {
+    board[r] = [];
+    for (let c = 0; c < COLS; c++) {
+      let v;
+      do { v = rnd(); } while (
+        (c >= 2 && board[r][c-1] === v && board[r][c-2] === v) ||
+        (r >= 2 && board[r-1][c] === v && board[r-2][c] === v)
+      );
+      board[r][c] = v;
+    }
+  }
+}
+
+function cellEmoji(v) {
+  if (v === BOMB) return '💣';
+  if (v === null) return '';
+  return CANDIES[v];
+}
+
+function render(falling = new Set(), matched = new Set()) {
+  boardEl.innerHTML = '';
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const idx = r * COLS + c;
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      const v = board[r][c];
+      if (v === null) { boardEl.appendChild(cell); continue; }
+      cell.textContent = cellEmoji(v);
+      if (v === BOMB) cell.classList.add('special');
+      if (matched.has(idx)) cell.classList.add('matched');
+      if (falling.has(idx)) cell.classList.add('falling');
+      if (selected && selected[0] === r && selected[1] === c) cell.classList.add('selected');
+      cell.addEventListener('click', () => onCellClick(r, c));
+      boardEl.appendChild(cell);
+    }
+  }
+}
+
+function onCellClick(r, c) {
+  if (busy || board[r][c] === null) return;
+  if (!selected) { selected = [r, c]; render(); return; }
+  const [sr, sc] = selected;
+  if (sr === r && sc === c) { selected = null; render(); return; }
+  const adj = (Math.abs(sr-r) + Math.abs(sc-c)) === 1;
+  if (!adj) { selected = [r, c]; render(); return; }
+  selected = null;
+  trySwap(sr, sc, r, c);
+}
+
+async function trySwap(r1, c1, r2, c2) {
+  busy = true;
+
+  // If either cell is a bomb → explode it
+  if (board[r1][c1] === BOMB || board[r2][c2] === BOMB) {
+    const br = board[r1][c1] === BOMB ? r1 : r2;
+    const bc = board[r1][c1] === BOMB ? c1 : c2;
+    moves--;
+    movesEl.textContent = moves;
+    await triggerBomb(br, bc);
+    busy = false;
+    checkEndGame();
+    return;
+  }
+
+  swap(r1, c1, r2, c2);
+  render();
+  const matched = findMatches();
+  if (matched.size === 0) {
+    await delay(200);
+    swap(r1, c1, r2, c2);
+    render();
+    shakeCells([r1*COLS+c1, r2*COLS+c2]);
+    busy = false;
+    return;
+  }
+  moves--;
+  movesEl.textContent = moves;
+  await processMatches(matched, r1, c1, r2, c2);
+  busy = false;
+  checkEndGame();
+}
+
+async function triggerBomb(br, bc) {
+  // Collect 3x3 area
+  const area = new Set();
+  for (let dr = -1; dr <= 1; dr++)
+    for (let dc = -1; dc <= 1; dc++) {
+      const nr = br+dr, nc = bc+dc;
+      if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS)
+        area.add(nr*COLS+nc);
+    }
+  area.add(br*COLS+bc); // the bomb itself
+
+  const pts = area.size * 60;
+  score += pts;
+  scoreEl.textContent = score;
+  updateProgress();
+  msgEl.textContent = `💣 BOOM! +${pts} punti`;
+  setTimeout(() => { msgEl.textContent = ''; }, 1800);
+
+  render(new Set(), area);
+  await delay(400);
+
+  for (const idx of area) {
+    const r = Math.floor(idx/COLS), c = idx%COLS;
+    board[r][c] = null;
+  }
+
+  await gravity();
+  await delay(200);
+
+  const cascade = findMatches();
+  if (cascade.size > 0) await processMatches(cascade);
+}
+
+function swap(r1,c1,r2,c2) {
+  [board[r1][c1], board[r2][c2]] = [board[r2][c2], board[r1][c1]];
+}
+
+function findMatches() {
+  const matched = new Set();
+  for (let r = 0; r < ROWS; r++) {
+    let run = 1;
+    for (let c = 1; c <= COLS; c++) {
+      const v = board[r][c], pv = board[r][c-1];
+      const same = c < COLS && v !== null && v !== BOMB && v === pv;
+      if (same) run++;
+      else { if (run >= 3) for (let k = c-run; k < c; k++) matched.add(r*COLS+k); run = 1; }
+    }
+  }
+  for (let c = 0; c < COLS; c++) {
+    let run = 1;
+    for (let r = 1; r <= ROWS; r++) {
+      const v = r < ROWS ? board[r][c] : null, pv = board[r-1][c];
+      const same = r < ROWS && v !== null && v !== BOMB && v === pv;
+      if (same) run++;
+      else { if (run >= 3) for (let k = r-run; k < r; k++) matched.add(k*COLS+c); run = 1; }
+    }
+  }
+  return matched;
+}
+
+function maxRunIn(matched) {
+  let mx = 0;
+  for (let r = 0; r < ROWS; r++) {
+    let run = 0;
+    for (let c = 0; c < COLS; c++) { matched.has(r*COLS+c) ? run++ : (run=0); mx = Math.max(mx,run); }
+  }
+  for (let c = 0; c < COLS; c++) {
+    let run = 0;
+    for (let r = 0; r < ROWS; r++) { matched.has(r*COLS+c) ? run++ : (run=0); mx = Math.max(mx,run); }
+  }
+  return mx;
+}
+
+async function processMatches(matched, r1, c1, r2, c2) {
+  let combo = 0;
+  while (matched.size > 0) {
+    combo++;
+    const pts = matched.size * 30 * combo;
+    score += pts;
+    scoreEl.textContent = score;
+    updateProgress();
+    showComboMsg(combo, pts);
+
+    // Create bomb for 5+ match
+    if (maxRunIn(matched) >= 5 && r2 !== undefined) {
+      const ti = r2*COLS+c2;
+      if (matched.has(ti)) {
+        matched.delete(ti);
+        board[r2][c2] = BOMB;
+      }
+    }
+
+    render(new Set(), matched);
+    await delay(380);
+
+    for (const idx of matched) {
+      const r = Math.floor(idx/COLS), c = idx%COLS;
+      if (board[r][c] !== BOMB) board[r][c] = null;
+    }
+
+    await gravity();
+    await delay(200);
+
+    matched = findMatches();
+    r1 = r2 = c1 = c2 = undefined;
+  }
+}
+
+async function gravity() {
+  const falling = new Set();
+  for (let c = 0; c < COLS; c++) {
+    let empty = 0;
+    for (let r = ROWS-1; r >= 0; r--) {
+      if (board[r][c] === null) empty++;
+      else if (empty > 0) {
+        board[r+empty][c] = board[r][c];
+        board[r][c] = null;
+        falling.add((r+empty)*COLS+c);
+      }
+    }
+    for (let r = 0; r < empty; r++) {
+      board[r][c] = rnd();
+      falling.add(r*COLS+c);
+    }
+  }
+  render(falling);
+  await delay(280);
+}
+
+function updateProgress() {
+  progressEl.style.width = Math.min(100, (score/TARGET)*100) + '%';
+}
+
+function showComboMsg(combo, pts) {
+  const labels = ['','Bene! 🎉','Ottimo! 🔥','Incredibile! 💥','FANTASTICO! 🌟','LEGGENDARIO! 👑'];
+  const lbl = labels[Math.min(combo, labels.length-1)];
+  msgEl.textContent = combo > 1 ? `${lbl} Combo x${combo}! +${pts}` : `+${pts} punti`;
+  setTimeout(() => { msgEl.textContent = ''; }, 1500);
+}
+
+function shakeCells(idxs) {
+  const cells = boardEl.querySelectorAll('.cell');
+  idxs.forEach(i => {
+    cells[i].classList.add('shake');
+    setTimeout(() => cells[i].classList.remove('shake'), 400);
+  });
+}
+
+function checkEndGame() {
+  if (score >= TARGET) showOverlay('🎉 HAI VINTO!', `Punteggio: ${score} — Mosse usate: ${MAX_MOVES-moves}`, '#ffd700');
+  else if (moves <= 0) showOverlay('😢 Game Over', `Ti mancavano ${TARGET-score} punti. Riprova!`, '#ff6b6b');
+}
+
+function showOverlay(title, sub, color) {
+  document.getElementById('overlay-title').textContent = title;
+  document.getElementById('overlay-title').style.color = color;
+  document.getElementById('overlay-sub').textContent = sub;
+  overlay.classList.add('show');
+}
+
+document.getElementById('restart-btn').addEventListener('click', () => {
+  overlay.classList.remove('show');
+  score = 0; moves = MAX_MOVES;
+  scoreEl.textContent = 0;
+  movesEl.textContent = moves;
+  progressEl.style.width = '0%';
+  msgEl.textContent = '';
+  selected = null;
+  initBoard(); render();
+});
+
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+initBoard();
+render();
+</script>
+</body>
+</html>
